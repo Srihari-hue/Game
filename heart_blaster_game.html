@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Heart Blaster 💗</title>
+<style>
+  :root { --pink:#ff6377; --ink:#202027; --cream:#fffaf7; }
+  *{box-sizing:border-box}
+  body{margin:0;min-height:100vh;display:grid;place-items:center;background:radial-gradient(circle at 20% 10%,#ffe4e8,transparent 34%),linear-gradient(135deg,#fffaf7,#f4f0ff);font-family:ui-rounded,"Trebuchet MS",system-ui,sans-serif;color:var(--ink);padding:16px}
+  .game{width:min(920px,100%);background:#ffffffd9;border:3px solid #222;border-radius:24px;box-shadow:0 12px 0 #222;overflow:hidden}
+  header{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 20px;border-bottom:2px solid #222;flex-wrap:wrap}
+  h1{font-size:clamp(20px,4vw,30px);margin:0;letter-spacing:-1px} h1 span{color:var(--pink)}
+  .stats{display:flex;gap:8px;flex-wrap:wrap}.pill{border:2px solid #222;border-radius:999px;padding:6px 12px;font-weight:800;background:#fff}
+  .stage{position:relative;background:linear-gradient(#fff,#fff8fb);padding:0}
+  canvas{display:block;width:100%;height:auto;touch-action:manipulation;cursor:crosshair}
+  .overlay{position:absolute;inset:0;display:grid;place-items:center;background:#fffaf0d9;padding:20px;text-align:center}
+  .card{max-width:430px;background:white;border:3px solid #222;border-radius:22px;padding:24px;box-shadow:7px 7px 0 #222}
+  .card .big{font-size:54px;line-height:1.2}.card h2{margin:8px 0;font-size:30px}.card p{line-height:1.5;margin:8px 0 18px}
+  button{font:inherit;font-weight:900;border:2px solid #222;background:var(--pink);color:#1b1518;border-radius:14px;padding:12px 20px;box-shadow:0 4px 0 #222;cursor:pointer}
+  button:active{transform:translateY(3px);box-shadow:0 1px 0 #222}
+  footer{padding:12px 18px;border-top:2px solid #222;display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;font-weight:700}
+  .hint{opacity:.75}
+  @media(max-width:560px){header{padding:12px}.pill{font-size:13px;padding:5px 9px}.card{padding:18px}.card h2{font-size:25px}}
+</style>
+</head>
+<body>
+<main class="game">
+  <header>
+    <h1>💗 <span>HEART</span> BLASTER</h1>
+    <div class="stats">
+      <div class="pill">SCORE <b id="score">0</b></div>
+      <div class="pill">❤️ LIVES <b id="lives">3</b></div>
+      <div class="pill">LEVEL <b id="level">1</b></div>
+    </div>
+  </header>
+  <section class="stage">
+    <canvas id="c" width="900" height="540" aria-label="Heart Blaster game"></canvas>
+    <div class="overlay" id="overlay">
+      <div class="card">
+        <div class="big">🥰 💘</div>
+        <h2 id="overlayTitle">Spread the love!</h2>
+        <p id="overlayText">Fire hearts at the grumpy little gloomies. Each hit earns points. Don't let them reach you—and watch out for broken hearts!</p>
+        <button id="start">LET'S PLAY ♥</button>
+        <p style="font-size:12px;margin:14px 0 0;opacity:.7">Move with ← → or A / D · Fire with SPACE or tap</p>
+      </div>
+    </div>
+  </section>
+  <footer><span>← → / A D to move · SPACE to shoot</span><span class="hint">Pink hearts = points · Broken hearts = danger</span></footer>
+</main>
+<script>
+(() => {
+const canvas=document.getElementById('c'),ctx=canvas.getContext('2d');
+const $=id=>document.getElementById(id);
+const W=900,H=540;
+let keys={},player,shots,enemies,particles,score,lives,level,playing,spawnTimer,lastTime,frame,fireCooldown,shake;
+function reset(){
+ score=0;lives=3;level=1;frame=0;spawnTimer=30;fireCooldown=0;shake=0;
+ player={x:W/2,y:H-70,w:64,h:76,speed:6,inv:0};
+ shots=[];enemies=[];particles=[];playing=true;updateHUD();
+}
+function updateHUD(){$('score').textContent=score;$('lives').textContent=lives;$('level').textContent=level;}
+function heartPath(x,y,size){
+ ctx.beginPath();ctx.moveTo(x,y+size*.3);
+ ctx.bezierCurveTo(x-size*.75,y-size*.25,x-size*.55,y-size*.7,x,y-size*.25);
+ ctx.bezierCurveTo(x+size*.55,y-size*.7,x+size*.75,y-size*.25,x,y+size*.3);ctx.closePath();
+}
+function drawHeart(x,y,size,color,stroke='#222',lw=3){
+ heartPath(x,y,size);ctx.fillStyle=color;ctx.fill();ctx.lineWidth=lw;ctx.strokeStyle=stroke;ctx.stroke();
+}
+function drawPlayer(){
+ const x=player.x,y=player.y;
+ ctx.save();ctx.translate(x,y);
+ // little white outlined love-thrower, inspired by the doodle
+ ctx.lineCap='round';ctx.lineJoin='round';ctx.strokeStyle='#171717';ctx.lineWidth=7;
+ ctx.beginPath();ctx.moveTo(-10,-35);ctx.bezierCurveTo(-37,-61,-48,-29,-32,-12);ctx.lineTo(-17,-1);
+ ctx.bezierCurveTo(-37,4,-42,20,-31,27);ctx.bezierCurveTo(-20,35,-8,24,-10,12);
+ ctx.lineTo(10,11);ctx.bezierCurveTo(20,27,17,38,1,42);ctx.lineTo(-30,43);
+ ctx.quadraticCurveTo(-43,43,-38,32);ctx.lineTo(-25,25);
+ ctx.moveTo(10,11);ctx.bezierCurveTo(28,6,35,23,48,17);ctx.lineTo(57,28);ctx.quadraticCurveTo(61,33,53,34);
+ ctx.lineTo(34,31);ctx.quadraticCurveTo(14,42,8,26);ctx.stroke();
+ ctx.beginPath();ctx.ellipse(12,-21,40,43,0,0,Math.PI*2);ctx.fillStyle='#fff';ctx.fill();ctx.stroke();
+ // arm pointing forward
+ ctx.beginPath();ctx.moveTo(-12,0);ctx.quadraticCurveTo(7,-10,34,-4);ctx.stroke();
+ ctx.beginPath();ctx.moveTo(-16,-11);ctx.quadraticCurveTo(-25,-22,-21,-33);ctx.quadraticCurveTo(-17,-41,-11,-31);ctx.lineTo(-8,-20);ctx.stroke();
+ ctx.fillStyle='#171717';ctx.beginPath();ctx.arc(0,-29,3.5,0,7);ctx.arc(20,-29,3.5,0,7);ctx.fill();
+ ctx.beginPath();ctx.arc(10,-21,9,0.15,Math.PI-.15);ctx.lineWidth=3.5;ctx.stroke();
+ ctx.restore();
+ // tiny muzzle sparkle
+ ctx.fillStyle='#ff6377';ctx.beginPath();ctx.arc(x+43,y-5,5,0,7);ctx.fill();
+}
+function drawEnemy(e){
+ ctx.save();ctx.translate(e.x,e.y);ctx.rotate(Math.sin(e.wobble)*.12);
+ if(e.bad){
+  drawHeart(0,0,26,'#393342','#171717',3);
+  ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(-10,-8);ctx.lineTo(-3,-1);ctx.lineTo(-7,5);ctx.lineTo(4,10);ctx.stroke();
+ }else{
+  // round gloomie with grumpy face
+  ctx.beginPath();ctx.arc(0,0,24,0,Math.PI*2);ctx.fillStyle=e.color;ctx.fill();ctx.lineWidth=3;ctx.strokeStyle='#222';ctx.stroke();
+  ctx.fillStyle='#222';ctx.beginPath();ctx.arc(-8,-4,2.7,0,7);ctx.arc(8,-4,2.7,0,7);ctx.fill();
+  ctx.beginPath();ctx.arc(0,10,7,Math.PI+0.2,Math.PI*2-.2);ctx.lineWidth=3;ctx.strokeStyle='#222';ctx.stroke();
+ }
+ ctx.restore();
+}
+function burst(x,y,color,n=9){
+ for(let i=0;i<n;i++){let a=Math.random()*Math.PI*2,s=1+Math.random()*4;particles.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,life:25+Math.random()*15,color,size:2+Math.random()*4});}
+}
+function shoot(){
+ if(!playing||fireCooldown>0)return;
+ shots.push({x:player.x+44,y:player.y-9,vy:-9.5});
+ fireCooldown=11;
+ burst(player.x+44,player.y-9,'#ff6377',3);
+}
+function update(dt){
+ if(!playing)return;
+ frame+=dt;fireCooldown=Math.max(0,fireCooldown-dt);if(player.inv>0)player.inv-=dt;
+ if(keys.ArrowLeft||keys.a||keys.A)player.x-=player.speed*dt;
+ if(keys.ArrowRight||keys.d||keys.D)player.x+=player.speed*dt;
+ player.x=Math.max(45,Math.min(W-45,player.x));
+ if(keys[' '])shoot();
+ level=1+Math.floor(score/100);spawnTimer-=dt;
+ if(spawnTimer<=0){
+  let bad=Math.random()<.18;
+  enemies.push({x:45+Math.random()*(W-90),y:-30,vy:1.1+Math.random()*.8+level*.13,wobble:Math.random()*6,color:['#ffb5c1','#ffd166','#c8b6ff','#a8e6cf'][Math.floor(Math.random()*4)],bad});
+  spawnTimer=Math.max(20,62-level*3)+Math.random()*25;
+ }
+ for(let s of shots)s.y+=s.vy*dt;
+ shots=shots.filter(s=>s.y>-20);
+ for(let e of enemies){e.y+=e.vy*dt;e.x+=Math.sin(frame*.035+e.wobble)*.45*dt;e.wobble+=.04*dt;}
+ for(let i=enemies.length-1;i>=0;i--){
+  let e=enemies[i],hit=false;
+  for(let j=shots.length-1;j>=0;j--){
+   let s=shots[j];if(Math.hypot(s.x-e.x,s.y-e.y)<27){
+    shots.splice(j,1);hit=true;break;
+   }
+  }
+  if(hit){
+   if(e.bad){score=Math.max(0,score-10);burst(e.x,e.y,'#393342',12);}
+   else{score+=10;burst(e.x,e.y,e.color,12);}
+   enemies.splice(i,1);updateHUD();continue;
+  }
+  if(e.y>H-105){
+   enemies.splice(i,1);lives--;player.inv=70;shake=8;burst(e.x,H-90,'#ff6377',10);updateHUD();
+   if(lives<=0)endGame();
+  }
+ }
+ for(let p of particles){p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=.08*dt;p.life-=dt;}
+ particles=particles.filter(p=>p.life>0);shake=Math.max(0,shake-dt);
+}
+function draw(){
+ ctx.save();if(shake)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+ ctx.clearRect(-10,-10,W+20,H+20);
+ // dotted pastel sky
+ for(let i=0;i<28;i++){let x=(i*137+35)%W,y=(i*83+22)%H;ctx.fillStyle=i%2?'#ffe0e5':'#eee6ff';ctx.beginPath();ctx.arc(x,y,2+(i%3),0,7);ctx.fill();}
+ // ground line
+ ctx.strokeStyle='#222';ctx.lineWidth=3;ctx.beginPath();ctx.moveTo(0,H-24);ctx.lineTo(W,H-24);ctx.stroke();
+ ctx.fillStyle='#fce7eb';ctx.fillRect(0,H-21,W,21);
+ shots.forEach(s=>{drawHeart(s.x,s.y,13,'#ff6377','#222',2.5);});
+ enemies.forEach(drawEnemy);
+ particles.forEach(p=>{ctx.globalAlpha=Math.min(1,p.life/12);ctx.fillStyle=p.color;ctx.beginPath();ctx.arc(p.x,p.y,p.size,0,7);ctx.fill();ctx.globalAlpha=1;});
+ if(player.inv<=0||Math.floor(frame/5)%2===0)drawPlayer();
+ ctx.restore();
+}
+function loop(t){let dt=Math.min(2,(t-(lastTime||t))/16.67);lastTime=t;update(dt);draw();requestAnimationFrame(loop);}
+function endGame(){
+ playing=false;$('overlay').style.display='grid';$('overlayTitle').textContent='Aww, love overload!';
+ $('overlayText').innerHTML=`You scored <b>${score}</b> points and reached level <b>${level}</b>.<br>Ready to spread a little more love?`;
+ $('start').textContent='PLAY AGAIN ♥';
+}
+$('start').addEventListener('click',()=>{$('overlay').style.display='none';reset();});
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys[e.key]=true;if(e.key===' '&&playing)shoot();});
+window.addEventListener('keyup',e=>keys[e.key]=false);
+canvas.addEventListener('pointerdown',e=>{if(!playing)return;shoot();const r=canvas.getBoundingClientRect();player.x=(e.clientX-r.left)/r.width*W;});
+canvas.addEventListener('pointermove',e=>{if(!playing||e.buttons===0)return;const r=canvas.getBoundingClientRect();player.x=(e.clientX-r.left)/r.width*W;});
+reset();playing=false;requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
